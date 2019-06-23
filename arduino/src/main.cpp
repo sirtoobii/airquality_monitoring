@@ -40,11 +40,58 @@ void indicateError(bool blocking=false){
     }
 }
 
+void writeToBle2(const String & data){
+  char buf[data.length()+1];
+  data.toCharArray(buf, data.length()+1);
+  Serial.println("Converted: " + String(buf) + "  Orig:" + data);
+  bleSerial.write(*buf);
+  delay(100);
+  Serial.println(bleSerial.readString());
+}
+
 void writeToBle(const char * data){
   Serial.println(data);
   bleSerial.write(data);
 }
 
+void writeToUUID(const String & data){
+  //Determine how many registers we need
+  int n_registers = data.length() / 8;
+  int tail = data.length() % 8;
+  Serial.println(n_registers);
+  Serial.println(tail);
+  if (n_registers > 4) {
+    Serial.println("Too much data for the uuid field. 32 Bytes max!");
+    return;
+  }
+  //Easy base case
+  if (n_registers == 0 && tail > 0){
+    String _data = "AT+IBE0" + String(data);
+    writeToBle2(_data);
+    return;
+  }
+  unsigned int array_pointer = 0;
+  int last_register = 0;
+  //Process all exept tail
+  for (int i = 0; i< n_registers; i++){
+    String _data = "";
+    for (int j = array_pointer; j < 8 + array_pointer; j++){
+      _data += data[j];
+    }
+    array_pointer += 8;
+    last_register = i;
+    writeToBle2("AT+IBE" + String(i) + _data);
+  }
+  // Process tail
+  if (array_pointer < data.length() ) {
+    String _data = "";
+    for (unsigned int i = array_pointer; i < data.length() ; i++){
+      _data += data[i];
+    }
+    _data = "AT+IBE" + String(last_register + 1) + _data;
+    writeToBle2(_data);
+  }
+}
 
 void setup(void)
 {
@@ -57,17 +104,22 @@ void setup(void)
 
   //Setup ble serial
   bleSerial.begin(9600); // Sometimes the default baud rate is also 115200
-  writeToBle("AT"); // Wake up
-  delay(100);
+  //writeToBle("AT"); // Wake up
+  bleSerial.write("AT");
   Serial.println(bleSerial.readString());
   writeToBle("AT+NAMEble1"); //Set name
   delay(300);
   Serial.println(bleSerial.readString());
-  writeToBle("AT+ADVI5"); // Set Advertising rate to  546.25 ms (higher does not work with bluepy)
+  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  delay(300);
+  writeToBle("AT+ADTY3"); // Only advertise, no connect
+  delay(300);
+  writeToBle("AT+IBEA1"); // Enable iBeacon mode
   delay(300);
   Serial.println(bleSerial.readString());
   writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
   delay(300);
+
   Serial.println(bleSerial.readString());
   writeToBle("AT+RESET"); // Restart
   delay(1000);
@@ -76,6 +128,8 @@ void setup(void)
   writeToBle("AT");
   delay(300);
   Serial.println(bleSerial.readString());
+
+  writeToUUID("2222222222266bbcc");
 
   //Indicate BLE ready
   digitalWrite(LED_BUILTIN, HIGH);
@@ -149,7 +203,7 @@ void loop(void)
   dtostrf(temp, 4, 1, temp_s);
   dtostrf(presure, 4, 0, pres_s);
   snprintf(data, 20, "t%sp%sc%dh%d", temp_s, pres_s, co2, tvoc);
-  writeToBle(data);
+  writeToBle2(String(data));
 
   //Indicate that data has been sent
   digitalWrite(LED_BUILTIN, HIGH);
