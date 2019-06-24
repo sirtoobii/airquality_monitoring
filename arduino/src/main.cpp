@@ -4,7 +4,8 @@
 #include <Adafruit_CCS811.h>
 #include <SoftwareSerial.h>
 
-#define CLOCK 400 //Internal clock rate in seconds
+#define CLOCK 2000 //Internal clock rate in seconds
+
 
 SoftwareSerial bleSerial(2, 3);
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
@@ -41,88 +42,102 @@ void indicateError(bool blocking=false){
     }
 }
 
-void writeToBle2(const String & data){
-  char buf[data.length()+1];
-  data.toCharArray(buf, data.length()+1);
-  Serial.println(String(buf));
-  bleSerial.write(buf);
+void writeToBle(const char * data){
+  Serial.println(data);
+  bleSerial.write(data);
   delay(200);
   Serial.println(bleSerial.readString());
 }
 
-void writeToBle(const char * data){
-  Serial.println(data);
-  bleSerial.write(data);
-}
-
-String float2Hex(float value){
-  int whole = value;
-  int remainder = (value - whole) * 100;
-  String str_whole = String(whole, HEX);
-  String str_remainder = String(remainder, HEX);
-  return String(str_whole+str_remainder);
-}
-
-String packIntoNBytes(const String & data, int nBytes){
-  if (data.length() < nBytes){
-    char _pre[nBytes - data.length()];
-    for (int i = 0; i < sizeof(_pre); i++){
-      _pre[i] = '0';
-    }
-    return String(_pre + data);
-  } else if (data.length() == nBytes){
-    return data;
-  } else {
-    Serial.println("String is too long");
-    globalErrorState = 0x5;
-    indicateError(false);
+/**
+ * Converts an integer to its HEX representation and packs it into an char
+ * array of a given length. The unused space in the array is padded with '0'.
+ *
+ **/
+void packIntoHexChar(char data[], int buf_size, int value){
+  char HEX_C[17]="0123456789ABCDEF";
+  //Fill with zero characters
+  for (int i = 0; i<buf_size -1; i++){
+    data[i] = '0';
   }
-
+  //Convert value to hex
+  char hb = highByte(value);
+  char lb = lowByte(value);
+  char int_chars[5] {HEX_C[hb>>4 & 0x0F], HEX_C[hb & 0x0F], HEX_C[lb>>4 & 0x0F], HEX_C[lb & 0x0F]};
+  //set value
+  for (int i = buf_size -2; i >= 0; i--){
+    if (buf_size -i <=5 ){
+      data[i] = int_chars[(i+1) - (buf_size - 4)];
+    }
+  }
 }
 
-void writeToUUID(const String & data){
-  data.toUpperCase();
+/**
+ * Takes an float value and converts it to a hex representation:
+ * 16.16 => 000F000F (if the size is set to 5 (4))
+ **/
+void float2Hex(float value, double precision, char whole[], int whole_size, char remainder[], int remainder_size){
+  int v_whole = value;
+  int v_remainder = (value - v_whole) * (int) pow(10, precision);
+  packIntoHexChar(whole, whole_size, v_whole);
+  packIntoHexChar(remainder, remainder_size, v_remainder);
+}
+
+/**
+ * Takes an char array with a maximum length of 32 and distributes its contents
+ * over the UUID field of the BLE module.
+ */
+void writeToUUID(char data[], int data_size){
   //Determine how many registers we need
-  int n_registers = data.length() / 8;
-  int tail = data.length() % 8;
-  Serial.println(n_registers);
-  Serial.println(tail);
+  int n_registers = data_size / 8;
+  int tail = data_size % 8;
   if (n_registers > 4) {
     Serial.println("Too much data for the uuid field. 32 Bytes max!");
     return;
   }
   //Easy base case
   if (n_registers == 0 && tail > 0){
-    String _data = "00000000";
+    char _data[9] = "00000000";
     for (int i = 0; i < 8; i++){
       _data[i] = data[i];
     }
-    String _toSend = "AT+IBE0" + _data;
-    writeToBle2(_toSend);
+    char _toSend[16];
+    strcpy(_toSend, "AT+IBE0");
+    strcat(_toSend, _data);
+    writeToBle(_toSend);
     return;
   }
-  unsigned int array_pointer = 0;
+  int array_pointer = 0;
   int last_register = 0;
-  //Process all exept tail
+  //Process all except tail
   for (int i = 0; i< n_registers; i++){
-    String _data = "";
-    for (unsigned int j = array_pointer; j < 8 + array_pointer; j++){
-      _data += data[j];
+    char _data[9] = "00000000";
+    for (int j = array_pointer; j < 8 + array_pointer; j++){
+      _data[j - array_pointer] = data[j];
     }
     array_pointer += 8;
     last_register = i;
-    writeToBle2("AT+IBE" + String(i) + _data);
-    delay(100);
+    char _command[7];
+    char _toSend[16];
+    sprintf(_command, "AT+IBE%d", i);
+    strcpy(_toSend, _command);
+    strcat(_toSend, _data);
+    writeToBle(_toSend);
   }
   // Process tail
-  if (array_pointer < data.length() ) {
-    Serial.println("Tail");
-    String _data = "00000000";
-    for (unsigned int i = 0; i < data.length() - array_pointer ; i++){
+  if (array_pointer < data_size ) {
+    char _data[9] = "00000000";
+    for (int i = 0; i < data_size - array_pointer ; i++){
+      Serial.println(i);
+      Serial.println(data[i+array_pointer]);
       _data[i] = data[i+array_pointer];
     }
-    String _toSend = "AT+IBE" + String(last_register + 1) + _data;
-    writeToBle2(_toSend);
+    char _command[7];
+    char _toSend[16];
+    sprintf(_command, "AT+IBE%d", last_register + 1);
+    strcpy(_toSend, _command);
+    strcat(_toSend, _data);
+    writeToBle(_toSend);
   }
 }
 
@@ -137,16 +152,22 @@ void setup(void)
 
   //Setup ble serial
   bleSerial.begin(9600); // Sometimes the default baud rate is also 115200
-  // writeToBle2("AT"); // Wake up
-  // writeToBle2("AT+NAMEsensortag1"); //Set name
-  // writeToBle2("AT+ADVIA"); // Set Advertising rate to  2000ms
-  // writeToBle2("AT+ADTY3"); // Only advertise, no connect
-  // writeToBle2("AT+IBEA1"); // Enable iBeacon mode
-  // writeToBle2("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
-  // writeToBle("AT+RESET"); // Restart
-  // delay(1000);
-  writeToBle2("AT");
-
+  writeToBle("AT"); // Wake up
+  writeToBle("AT+NAMEsensortag1"); //Set name
+  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  writeToBle("AT+ADTY3"); // Only advertise, no connect
+  writeToBle("AT+IBEA1"); // Enable iBeacon mode
+  //Reset id (we somehow can't set them to 0x0)
+  writeToBle("AT+IBE000000001");
+  writeToBle("AT+IBE100000001");
+  writeToBle("AT+IBE200000001");
+  writeToBle("AT+IBE300000001");
+  writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
+  writeToBle("AT+RESET"); // Restart
+  delay(1000);
+  writeToBle("AT");
+  
+  Serial.println("Module is ready, initialize sensors...");
   //Indicate BLE ready
   digitalWrite(LED_BUILTIN, HIGH);
   delay(100);
@@ -211,15 +232,38 @@ void loop(void)
       globalErrorState = 0x4;
     }
   }
-  indicateError();
-  String hex_co2 = packIntoNBytes(String(co2, HEX), 4);
-  String hex_temp = packIntoNBytes(float2Hex(temp), 4);
-  String hex_presure = packIntoNBytes(float2Hex(presure), 5);
-  String hex_tvoc = packIntoNBytes(String(tvoc), 2);
-  Serial.println(hex_co2 + hex_temp + hex_presure + hex_tvoc);
 
-  writeToUUID(hex_co2 + hex_temp + hex_presure + hex_tvoc);
-  //Indicate that data has been sent
+  indicateError();
+  Serial.println(co2);
+  char buf_co2[5] = "0000";
+  packIntoHexChar(buf_co2, 5, co2);
+
+  Serial.println(temp);
+  char buf_temp_whole[3] = "00";
+  char buf_temp_remainder[3] = "00";
+  float2Hex(temp, 2.0, buf_temp_whole, 3, buf_temp_remainder, 3);
+
+  Serial.println(presure);
+  char buf_pres_whole[5] = "0000";
+  char buf_pres_remainder[3] = "00";
+  float2Hex(presure, 2.0, buf_pres_whole, 5, buf_pres_remainder, 3);
+
+  Serial.println(tvoc);
+  char buf_tvoc[3] = "00";
+  packIntoHexChar(buf_tvoc, 3, tvoc);
+
+  //Prepare buffer (only 17 since 22 - 5)
+  char buf_toSend[17];
+  strcpy(buf_toSend, buf_co2);
+  strcat(buf_toSend, buf_temp_whole);
+  strcat(buf_toSend, buf_temp_remainder);
+  strcat(buf_toSend, buf_pres_whole);
+  strcat(buf_toSend, buf_temp_remainder);
+  strcat(buf_toSend, buf_tvoc);
+
+  //Set UUID (only 16 since we don't need the termination character)
+  writeToUUID(buf_toSend, 16);
+
   digitalWrite(LED_BUILTIN, HIGH);
   delay(100);
   digitalWrite(LED_BUILTIN, LOW);
