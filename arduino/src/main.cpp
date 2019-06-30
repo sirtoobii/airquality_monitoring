@@ -42,6 +42,12 @@ void indicateError(bool blocking=false){
     }
 }
 
+void fillWithChar(char data[], char character, int data_size){
+  for (int i = 0; i < data_size; i++){
+    data[i] = character;
+  }
+}
+
 void writeToBle(const char * data){
   Serial.println(data);
   bleSerial.write(data);
@@ -54,16 +60,23 @@ void writeToBle(const char * data){
  * array of a given length. The unused space in the array is padded with '0'.
  *
  **/
+
 void packIntoHexChar(char data[], int buf_size, int value){
-  char HEX_C[17]="0123456789ABCDEF";
+  static char hb = 0x0;
+  static char lb = 0x0;
+  static char int_chars[5] = "0000";
+  static char HEX_C[17]="0123456789ABCDEF";
   //Fill with zero characters
   for (int i = 0; i<buf_size -1; i++){
     data[i] = '0';
   }
   //Convert value to hex
-  char hb = highByte(value);
-  char lb = lowByte(value);
-  char int_chars[5] {HEX_C[hb>>4 & 0x0F], HEX_C[hb & 0x0F], HEX_C[lb>>4 & 0x0F], HEX_C[lb & 0x0F]};
+  hb = highByte(value);
+  lb = lowByte(value);
+  int_chars[0] = HEX_C[hb>>4 & 0x0F];
+  int_chars[1] = HEX_C[hb & 0x0F];
+  int_chars[2]=  HEX_C[lb>>4 & 0x0F];
+  int_chars[3] = HEX_C[lb & 0x0F];
   //set value
   for (int i = buf_size -2; i >= 0; i--){
     if (buf_size -i <=5 ){
@@ -77,8 +90,10 @@ void packIntoHexChar(char data[], int buf_size, int value){
  * 16.16 => 000F000F (if the size is set to 5 (4))
  **/
 void float2Hex(float value, double precision, char whole[], int whole_size, char remainder[], int remainder_size){
-  int v_whole = value;
-  int v_remainder = (value - v_whole) * (int) pow(10, precision);
+  static int v_whole = 0;
+  static int v_remainder = 0;
+  v_whole = value;
+  v_remainder = (value - v_whole) * (int) pow(10, precision);
   packIntoHexChar(whole, whole_size, v_whole);
   packIntoHexChar(remainder, remainder_size, v_remainder);
 }
@@ -87,54 +102,55 @@ void float2Hex(float value, double precision, char whole[], int whole_size, char
  * Takes an char array with a maximum length of 32 and distributes its contents
  * over the UUID field of the BLE module.
  */
+
+
+
 void writeToUUID(char data[], int data_size){
+  static char _data[9] = "00000000";
+  static char _toSend[17];
+  static char _command[8];
+  static int array_pointer = 0;
+  static int n_registers = 0;
+  static int tail = 0;
   //Determine how many registers we need
-  int n_registers = data_size / 8;
-  int tail = data_size % 8;
+  n_registers = data_size / 8;
+  tail = data_size % 8;
   if (n_registers > 4) {
     Serial.println("Too much data for the uuid field. 32 Bytes max!");
     return;
   }
   //Easy base case
   if (n_registers == 0 && tail > 0){
-    char _data[9] = "00000000";
+    fillWithChar(_data, '0', 8);
     for (int i = 0; i < 8; i++){
       _data[i] = data[i];
     }
-    char _toSend[16];
     strcpy(_toSend, "AT+IBE0");
     strcat(_toSend, _data);
     writeToBle(_toSend);
     return;
   }
-  int array_pointer = 0;
-  int last_register = 0;
+  array_pointer = 0;
   //Process all except tail
   for (int i = 0; i< n_registers; i++){
-    char _data[9] = "00000000";
+    fillWithChar(_data, '0', 8);
     for (int j = array_pointer; j < 8 + array_pointer; j++){
       _data[j - array_pointer] = data[j];
     }
     array_pointer += 8;
-    last_register = i;
-    char _command[7];
-    char _toSend[16];
     sprintf(_command, "AT+IBE%d", i);
     strcpy(_toSend, _command);
     strcat(_toSend, _data);
     writeToBle(_toSend);
   }
-  // Process tail
+  //Process tail
   if (array_pointer < data_size ) {
-    char _data[9] = "00000000";
+    fillWithChar(_data, '0', 8);
     for (int i = 0; i < data_size - array_pointer ; i++){
-      Serial.println(i);
-      Serial.println(data[i+array_pointer]);
       _data[i] = data[i+array_pointer];
     }
-    char _command[7];
-    char _toSend[16];
-    sprintf(_command, "AT+IBE%d", last_register + 1);
+    // Serial.println(_data);
+    sprintf(_command, "AT+IBE%d", n_registers);
     strcpy(_toSend, _command);
     strcat(_toSend, _data);
     writeToBle(_toSend);
@@ -152,22 +168,22 @@ void setup(void)
 
   //Setup ble serial
   bleSerial.begin(9600); // Sometimes the default baud rate is also 115200
-  writeToBle("AT"); // Wake up
-  writeToBle("AT+NAMEsensortag1"); //Set name
-  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
-  writeToBle("AT+ADTY3"); // Only advertise, no connect
-  writeToBle("AT+IBEA1"); // Enable iBeacon mode
-  //Reset id (we somehow can't set them to 0x0)
-  writeToBle("AT+IBE000000001");
-  writeToBle("AT+IBE100000001");
-  writeToBle("AT+IBE200000001");
-  writeToBle("AT+IBE300000001");
-  writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
-  writeToBle("AT+RESET"); // Restart
-  delay(1000);
+  // writeToBle("AT"); // Wake up
+  // writeToBle("AT+NAMEsensortag1"); //Set name
+  // writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  // writeToBle("AT+ADTY3"); // Only advertise, no connect
+  // writeToBle("AT+IBEA1"); // Enable iBeacon mode
+  // //Reset id (we somehow can't set them to 0x0)
+  // writeToBle("AT+IBE000000001");
+  // writeToBle("AT+IBE100000001");
+  // writeToBle("AT+IBE200000001");
+  // writeToBle("AT+IBE300000001");
+  // writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
+  // writeToBle("AT+RESET"); // Restart
+  // delay(1000);
   writeToBle("AT");
-  
-  Serial.println("Module is ready, initialize sensors...");
+
+  Serial.println("Module is ready, initializing sensors...");
   //Indicate BLE ready
   digitalWrite(LED_BUILTIN, HIGH);
   delay(100);
@@ -199,16 +215,26 @@ void setup(void)
 
 }
 
-void loop(void)
-{
+void loop(void){
+  static float temp = 0.0;
+  static float presure = 0.0;
+  static int co2 = 0;
+  static int tvoc = 0;
+
+  //Send buffers
+  static char buf_co2[5] = "0000";
+  static char buf_temp_whole[3] = "00";
+  static char buf_temp_remainder[3] = "00";
+  static char buf_pres_whole[5] = "0000";
+  static char buf_pres_remainder[3] = "00";
+  static char buf_tvoc[4] = "000";
+
+  //Prepare whole buffer (only 18 since 23 - 5)
+  static char buf_toSend[18];
   // Get a new sensor event
   sensors_event_t event;
   bmp.getEvent(&event);
 
-  float temp;
-  float presure;
-  int co2 = 0;
-  int tvoc = 0;
   if (event.pressure)
   {
     presure = event.pressure;
@@ -235,25 +261,23 @@ void loop(void)
 
   indicateError();
   Serial.println(co2);
-  char buf_co2[5] = "0000";
+  fillWithChar(buf_co2, '0', 4);
   packIntoHexChar(buf_co2, 5, co2);
 
   Serial.println(temp);
-  char buf_temp_whole[3] = "00";
-  char buf_temp_remainder[3] = "00";
+  fillWithChar(buf_temp_whole, '0', 2);
+  fillWithChar(buf_temp_remainder, '0', 2);
   float2Hex(temp, 2.0, buf_temp_whole, 3, buf_temp_remainder, 3);
 
   Serial.println(presure);
-  char buf_pres_whole[5] = "0000";
-  char buf_pres_remainder[3] = "00";
+  fillWithChar(buf_pres_whole, '0', 4);
+  fillWithChar(buf_pres_remainder, '0', 2);
   float2Hex(presure, 2.0, buf_pres_whole, 5, buf_pres_remainder, 3);
 
   Serial.println(tvoc);
-  char buf_tvoc[3] = "00";
-  packIntoHexChar(buf_tvoc, 3, tvoc);
+  fillWithChar(buf_tvoc, '0', 3);
+  packIntoHexChar(buf_tvoc, 4, tvoc);
 
-  //Prepare buffer (only 17 since 22 - 5)
-  char buf_toSend[17];
   strcpy(buf_toSend, buf_co2);
   strcat(buf_toSend, buf_temp_whole);
   strcat(buf_toSend, buf_temp_remainder);
@@ -262,7 +286,7 @@ void loop(void)
   strcat(buf_toSend, buf_tvoc);
 
   //Set UUID (only 16 since we don't need the termination character)
-  writeToUUID(buf_toSend, 16);
+  writeToUUID(buf_toSend, 17);
 
   digitalWrite(LED_BUILTIN, HIGH);
   delay(100);
