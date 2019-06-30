@@ -4,7 +4,7 @@
 #include <Adafruit_CCS811.h>
 #include <SoftwareSerial.h>
 
-#define CLOCK 2000 //Internal clock rate in seconds
+#define CLOCK 20000 //Internal clock rate in seconds
 
 
 SoftwareSerial bleSerial(2, 3);
@@ -58,7 +58,6 @@ void fillWithChar(char data[], char character, int data_size){
 void writeToBle(const char * data){
   Serial.println(data);
   bleSerial.write(data);
-  delay(50);
   Serial.println(bleSerial.readString());
 }
 
@@ -93,9 +92,11 @@ void packIntoHexChar(char data[], int buf_size, int value){
  * Implemention of the "Fletcher's Checksum". To fit the result into two
  * HEX character we compute the modulo 16 of each value.
  **/
+int sum1 = 0;
+int sum2 = 0;
 void computeChecksum(char input[], int input_size, char output[]){
-  static int sum1 = 0;
-  static int sum2 = 0;
+  sum1 = 0;
+  sum2 = 0;
   for (int i = 0; i < input_size; i++) {
     sum1 = (sum1 + input[i]) % 255;
     sum2 = (sum2 + sum1) % 255;
@@ -251,6 +252,7 @@ void setup(void)
   float temp = ccs.calculateTemperature();
   ccs.setTempOffset(temp - 25.0);
 
+  Serial.println("Sensors initialized successfully");
 }
 
 void loop(void){
@@ -320,10 +322,10 @@ void loop(void){
   strcat(buf_toSend, buf_temp_whole);
   strcat(buf_toSend, buf_temp_remainder);
   strcat(buf_toSend, buf_pres_whole);
-  strcat(buf_toSend, buf_temp_remainder);
+  strcat(buf_toSend, buf_pres_remainder);
   strcat(buf_toSend, buf_tvoc);
 
-  //Set UUID (only 16 since we don't need the termination character)
+  //Set UUID (only 17 since we don't need the termination character)
   writeToUUID(buf_toSend, 17);
 
   digitalWrite(LED_BUILTIN, HIGH);
