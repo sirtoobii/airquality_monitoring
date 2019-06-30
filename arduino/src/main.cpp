@@ -23,6 +23,7 @@ Adafruit_CCS811 ccs;
  * 0x5: Error converting the data
  */
 char globalErrorState = 0x0;
+char HEX_C[17]="0123456789ABCDEF";
 int ctr = 0;
 
 void indicateError(bool blocking=false){
@@ -41,17 +42,23 @@ void indicateError(bool blocking=false){
     }
     }
 }
-
+/**
+ * Takes a char array a fills it with a given character
+ **/
 void fillWithChar(char data[], char character, int data_size){
   for (int i = 0; i < data_size; i++){
     data[i] = character;
   }
 }
 
+/**
+ * Just writes an input char array to the BLE module. Also prints the response
+ * to UART.
+ **/
 void writeToBle(const char * data){
   Serial.println(data);
   bleSerial.write(data);
-  delay(200);
+  delay(50);
   Serial.println(bleSerial.readString());
 }
 
@@ -60,12 +67,10 @@ void writeToBle(const char * data){
  * array of a given length. The unused space in the array is padded with '0'.
  *
  **/
-
 void packIntoHexChar(char data[], int buf_size, int value){
   static char hb = 0x0;
   static char lb = 0x0;
   static char int_chars[5] = "0000";
-  static char HEX_C[17]="0123456789ABCDEF";
   //Fill with zero characters
   for (int i = 0; i<buf_size -1; i++){
     data[i] = '0';
@@ -83,6 +88,21 @@ void packIntoHexChar(char data[], int buf_size, int value){
       data[i] = int_chars[(i+1) - (buf_size - 4)];
     }
   }
+}
+/**
+ * Implemention of the "Fletcher's Checksum". To fit the result into two
+ * HEX character we compute the modulo 16 of each value.
+ **/
+void computeChecksum(char input[], int input_size, char output[]){
+  static int sum1 = 0;
+  static int sum2 = 0;
+  for (int i = 0; i < input_size; i++) {
+    sum1 = (sum1 + input[i]) % 255;
+    sum2 = (sum2 + sum1) % 255;
+  }
+
+output[0] = HEX_C[lowByte(sum1 % 16) & 0x0F];
+output[1] = HEX_C[lowByte(sum2 % 16) & 0x0F];
 }
 
 /**
@@ -109,14 +129,17 @@ void writeToUUID(char data[], int data_size){
   static char _data[9] = "00000000";
   static char _toSend[17];
   static char _command[8];
+  static char _checksum[3] = "00";
   static int array_pointer = 0;
   static int n_registers = 0;
   static int tail = 0;
   //Determine how many registers we need
   n_registers = data_size / 8;
   tail = data_size % 8;
-  if (n_registers > 4) {
-    Serial.println("Too much data for the uuid field. 32 Bytes max!");
+  //Set checksum
+  computeChecksum(data, data_size, _checksum);
+  if (data_size > 30) {
+    Serial.println("Too much data for the uuid field. 30 Bytes max! (last two are the checksum)");
     return;
   }
   //Easy base case
@@ -138,10 +161,13 @@ void writeToUUID(char data[], int data_size){
       _data[j - array_pointer] = data[j];
     }
     array_pointer += 8;
-    sprintf(_command, "AT+IBE%d", i);
-    strcpy(_toSend, _command);
-    strcat(_toSend, _data);
-    writeToBle(_toSend);
+    //Only send if this is not the last register
+    if (i < 3){
+      sprintf(_command, "AT+IBE%d", i);
+      strcpy(_toSend, _command);
+      strcat(_toSend, _data);
+      writeToBle(_toSend);
+    }
   }
   //Process tail
   if (array_pointer < data_size ) {
@@ -149,12 +175,24 @@ void writeToUUID(char data[], int data_size){
     for (int i = 0; i < data_size - array_pointer ; i++){
       _data[i] = data[i+array_pointer];
     }
-    // Serial.println(_data);
-    sprintf(_command, "AT+IBE%d", n_registers);
-    strcpy(_toSend, _command);
-    strcat(_toSend, _data);
-    writeToBle(_toSend);
+    //Only send if this is not the last register
+    if (n_registers < 3){
+      sprintf(_command, "AT+IBE%d", n_registers);
+      strcpy(_toSend, _command);
+      strcat(_toSend, _data);
+      writeToBle(_toSend);
+    }
   }
+  if (n_registers < 3){
+    fillWithChar(_data, '0', 8);
+  }
+  //Write last register with checksum
+  sprintf(_command, "AT+IBE%d", 3);
+  _data[6] = _checksum[0];
+  _data[7] = _checksum[1];
+  strcpy(_toSend, _command);
+  strcat(_toSend, _data);
+  writeToBle(_toSend);
 }
 
 void setup(void)
@@ -168,19 +206,19 @@ void setup(void)
 
   //Setup ble serial
   bleSerial.begin(9600); // Sometimes the default baud rate is also 115200
-  // writeToBle("AT"); // Wake up
-  // writeToBle("AT+NAMEsensortag1"); //Set name
-  // writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
-  // writeToBle("AT+ADTY3"); // Only advertise, no connect
-  // writeToBle("AT+IBEA1"); // Enable iBeacon mode
-  // //Reset id (we somehow can't set them to 0x0)
-  // writeToBle("AT+IBE000000001");
-  // writeToBle("AT+IBE100000001");
-  // writeToBle("AT+IBE200000001");
-  // writeToBle("AT+IBE300000001");
-  // writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
-  // writeToBle("AT+RESET"); // Restart
-  // delay(1000);
+  writeToBle("AT"); // Wake up
+  writeToBle("AT+NAMEsensortag1"); //Set name
+  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  writeToBle("AT+ADTY3"); // Only advertise, no connect
+  writeToBle("AT+IBEA1"); // Enable iBeacon mode
+  //Reset id (we somehow can't set them to 0x0)
+  writeToBle("AT+IBE000000001");
+  writeToBle("AT+IBE100000001");
+  writeToBle("AT+IBE200000001");
+  writeToBle("AT+IBE300000001");
+  writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
+  writeToBle("AT+RESET"); // Restart
+  delay(1000);
   writeToBle("AT");
 
   Serial.println("Module is ready, initializing sensors...");
