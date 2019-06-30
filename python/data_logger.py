@@ -13,14 +13,14 @@ dbname = "sensor_data" # the database we created earlier
 client = InfluxDBClient(host, port, user, password, dbname)
 
 # think of measurement as a SQL table, it's not...but...
-measurement = "first_sensor"
+measurement = "second_sensor"
 # location will be used as a grouping tag later
 location = "living_room"
 
 
-def write_to_db(temp:float, presure:float, co2:int, hum:int):
+def write_to_db(co2:int, temp:float, presure:float, tvo2:int):
   #iso = time.ctime()
-  print(temp, presure, co2, hum)
+  print(co2, temp, presure, tvo2)
   data = [
         {
           "measurement": measurement,
@@ -30,7 +30,7 @@ def write_to_db(temp:float, presure:float, co2:int, hum:int):
               "time": datetime.datetime.utcnow().isoformat(),
               "fields": {
                   "temperature" : temp,
-                  "humidity": hum,
+                  "tvo2": tvo2,
                   "presure": presure,
                   "co2":co2
               }
