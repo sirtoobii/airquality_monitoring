@@ -1,31 +1,38 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085_U.h>
-#include <Adafruit_CCS811.h>
 #include <SoftwareSerial.h>
+#include <DFRobot_SHT20.h>
 
-#define CLOCK 20000 //Internal clock rate in seconds
+#define unsigned char byte
+#define CLOCK 20000 //Internal clock rate in milliseconds
+
+/**
+ * Common pitfalls:
+ * - Allways clear serial buffers!
+ * - When defining multiple SoftwareSerial objects make sure to call serial_object.listen() before interacting!
+ */
+
+SoftwareSerial SerialBLE(2, 3);  // BLE
+SoftwareSerial SerialCO2(10,11);  // CO2
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085); //Temperature & Presure
+DFRobot_SHT20 sht20; //Humitity
 
 
-SoftwareSerial bleSerial(2, 3);
-Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
-Adafruit_CCS811 ccs;
 
+byte READ_CO2[]={0xff,0x01,0x86,0x00,0x00,0x00,0x00,0x00,0x79};  //Befehl zum Auslesen der CO2 Konzentration
 
+static char globalErrorState = 0x0;
+const static char HEX_C[17]="0123456789ABCDEF";
 
 /*
  * Possibile Error states
  * 0x0: No error
  * 0x1: Error at init BMP085
- * 0x2: Error at init CSS811
+ * 0x2: Error at init SHT20
  * 0x3: Error reading sensor BMP085
- * 0x4: Error reading sensor CSS811
  * 0x5: Error converting the data
  */
-char globalErrorState = 0x0;
-char HEX_C[17]="0123456789ABCDEF";
-int ctr = 0;
-
 void indicateError(bool blocking=false){
   if (globalErrorState != 0x0) {
     while(true){
@@ -56,9 +63,13 @@ void fillWithChar(char data[], char character, int data_size){
  * to UART.
  **/
 void writeToBle(const char * data){
+  SerialBLE.listen();
+  while (SerialBLE.available() >0) {     //Hier wird der Buffer der Seriellen Schnittstelle gelehrt
+    SerialBLE.read();
+  }
   Serial.println(data);
-  bleSerial.write(data);
-  Serial.println(bleSerial.readString());
+  SerialBLE.write(data);
+  Serial.println(SerialBLE.readString());
 }
 
 /**
@@ -90,7 +101,7 @@ void packIntoHexChar(char data[], int buf_size, int value){
 }
 /**
  * Implemention of the "Fletcher's Checksum". To fit the result into two
- * HEX character we compute the modulo 16 of each value.
+ * HEX character we READ_CO2pute the modulo 16 of each value.
  **/
 int sum1 = 0;
 int sum2 = 0;
@@ -129,7 +140,7 @@ void float2Hex(float value, double precision, char whole[], int whole_size, char
 void writeToUUID(char data[], int data_size){
   static char _data[9] = "00000000";
   static char _toSend[17];
-  static char _command[8];
+  static char _READ_CO2mand[8];
   static char _checksum[3] = "00";
   static int array_pointer = 0;
   static int n_registers = 0;
@@ -164,8 +175,8 @@ void writeToUUID(char data[], int data_size){
     array_pointer += 8;
     //Only send if this is not the last register
     if (i < 3){
-      sprintf(_command, "AT+IBE%d", i);
-      strcpy(_toSend, _command);
+      sprintf(_READ_CO2mand, "AT+IBE%d", i);
+      strcpy(_toSend, _READ_CO2mand);
       strcat(_toSend, _data);
       writeToBle(_toSend);
     }
@@ -178,8 +189,8 @@ void writeToUUID(char data[], int data_size){
     }
     //Only send if this is not the last register
     if (n_registers < 3){
-      sprintf(_command, "AT+IBE%d", n_registers);
-      strcpy(_toSend, _command);
+      sprintf(_READ_CO2mand, "AT+IBE%d", n_registers);
+      strcpy(_toSend, _READ_CO2mand);
       strcat(_toSend, _data);
       writeToBle(_toSend);
     }
@@ -188,10 +199,10 @@ void writeToUUID(char data[], int data_size){
     fillWithChar(_data, '0', 8);
   }
   //Write last register with checksum
-  sprintf(_command, "AT+IBE%d", 3);
+  sprintf(_READ_CO2mand, "AT+IBE%d", 3);
   _data[6] = _checksum[0];
   _data[7] = _checksum[1];
-  strcpy(_toSend, _command);
+  strcpy(_toSend, _READ_CO2mand);
   strcat(_toSend, _data);
   writeToBle(_toSend);
 }
@@ -205,21 +216,24 @@ void setup(void)
   Serial.begin(9600);
   Serial.println("Starting module");
 
+  //Co2 Serial
+  SerialCO2.begin(9600);  //Initialisierung der seriellen Schnittstelle für den ersten Sensor
+
   //Setup ble serial
-  bleSerial.begin(9600); // Sometimes the default baud rate is also 115200
-  writeToBle("AT"); // Wake up
-  writeToBle("AT+NAMEsensortag1"); //Set name
-  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
-  writeToBle("AT+ADTY3"); // Only advertise, no connect
-  writeToBle("AT+IBEA1"); // Enable iBeacon mode
-  //Reset id (we somehow can't set them to 0x0)
-  writeToBle("AT+IBE000000001");
-  writeToBle("AT+IBE100000001");
-  writeToBle("AT+IBE200000001");
-  writeToBle("AT+IBE300000001");
-  writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
-  writeToBle("AT+RESET"); // Restart
-  delay(1000);
+  SerialBLE.begin(9600); // Sometimes the default baud rate is also 115200
+  // writeToBle("AT"); // Wake up
+  // writeToBle("AT+NAMEsensortag1"); //Set name
+  // writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  // writeToBle("AT+ADTY3"); // Only advertise, no connect
+  // writeToBle("AT+IBEA1"); // Enable iBeacon mode
+  // //Reset id (we somehow can't set them to 0x0)
+  // writeToBle("AT+IBE000000001");
+  // writeToBle("AT+IBE100000001");
+  // writeToBle("AT+IBE200000001");
+  // writeToBle("AT+IBE300000001");
+  // writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
+  // writeToBle("AT+RESET"); // Restart
+  // delay(1000);
   writeToBle("AT");
 
   Serial.println("Module is ready, initializing sensors...");
@@ -240,17 +254,8 @@ void setup(void)
     globalErrorState = 0x1;
     indicateError(true);
   }
-  //Setup CCS811
-  if (!ccs.begin()) {
-    Serial.println("Failed to start CSS811 Sensor");
-    globalErrorState = 0x2;
-    indicateError(true);
-  }
-
-  //calibrate temperature sensor
-  while(!ccs.available());
-  float temp = ccs.calculateTemperature();
-  ccs.setTempOffset(temp - 25.0);
+  sht20.initSHT20();
+  delay(100);
 
   Serial.println("Sensors initialized successfully");
 }
@@ -258,8 +263,11 @@ void setup(void)
 void loop(void){
   static float temp = 0.0;
   static float presure = 0.0;
-  static int co2 = 0;
-  static int tvoc = 0;
+  static int co2_concentration = 0;
+  static float humidity = 0.0;
+
+  //co2 read buffer
+  static byte buf_read_co2[9];
 
   //Send buffers
   static char buf_co2[5] = "0000";
@@ -267,10 +275,14 @@ void loop(void){
   static char buf_temp_remainder[3] = "00";
   static char buf_pres_whole[5] = "0000";
   static char buf_pres_remainder[3] = "00";
-  static char buf_tvoc[4] = "000";
+  static char buf_hum_whole[3] = "00";
+  static char buf_hum_remainder[3] = "00";
 
-  //Prepare whole buffer (only 18 since 23 - 5)
-  static char buf_toSend[18];
+  //Prepare whole buffer (only 19 since 25 - 6)
+  // -6 Because we can remove the string termination characters
+  static char buf_toSend[19];
+
+
   // Get a new sensor event
   sensors_event_t event;
   bmp.getEvent(&event);
@@ -286,23 +298,26 @@ void loop(void){
     globalErrorState = 0x3;
   }
 
-  delay(100);
-
-  if(ccs.available()){
-    if(!ccs.readData()){
-      co2 = ccs.geteCO2();
-      tvoc = ccs.getTVOC();
-      globalErrorState = 0x0;
-    }
-    else{
-      globalErrorState = 0x4;
-    }
+  //Read co2 readings
+  SerialCO2.listen();
+  //Flush buffer
+  while (SerialCO2.available() >0) {
+    SerialCO2.read();
   }
+  SerialCO2.write(READ_CO2,9);
+  SerialCO2.readBytes(buf_read_co2,9);
+  Serial.println(buf_read_co2[2]);
+  co2_concentration = buf_read_co2[2]*256+buf_read_co2[3];
+
+
+  // Read humidity
+  humidity = sht20.readHumidity();
+
 
   indicateError();
-  Serial.println(co2);
+  Serial.println(co2_concentration);
   fillWithChar(buf_co2, '0', 4);
-  packIntoHexChar(buf_co2, 5, co2);
+  packIntoHexChar(buf_co2, 5, co2_concentration);
 
   Serial.println(temp);
   fillWithChar(buf_temp_whole, '0', 2);
@@ -314,19 +329,21 @@ void loop(void){
   fillWithChar(buf_pres_remainder, '0', 2);
   float2Hex(presure, 2.0, buf_pres_whole, 5, buf_pres_remainder, 3);
 
-  Serial.println(tvoc);
-  fillWithChar(buf_tvoc, '0', 3);
-  packIntoHexChar(buf_tvoc, 4, tvoc);
+  Serial.println(humidity);
+  fillWithChar(buf_hum_whole, '0', 2);
+  fillWithChar(buf_hum_remainder, '0', 2);
+  float2Hex(humidity, 2.0, buf_hum_whole, 3, buf_hum_remainder, 3);
 
   strcpy(buf_toSend, buf_co2);
   strcat(buf_toSend, buf_temp_whole);
   strcat(buf_toSend, buf_temp_remainder);
   strcat(buf_toSend, buf_pres_whole);
   strcat(buf_toSend, buf_pres_remainder);
-  strcat(buf_toSend, buf_tvoc);
+  strcat(buf_toSend, buf_hum_whole);
+  strcat(buf_toSend, buf_hum_remainder);
 
-  //Set UUID (only 17 since we don't need the termination character)
-  writeToUUID(buf_toSend, 17);
+  //Set UUID (only 18 since we don't need the termination character)
+  writeToUUID(buf_toSend, 18);
 
   digitalWrite(LED_BUILTIN, HIGH);
   delay(100);
