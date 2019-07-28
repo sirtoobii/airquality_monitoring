@@ -1,0 +1,2 @@
+﻿influxdb==5.2.2
+bluepy
