@@ -26,11 +26,12 @@
       "fill": 1,
       "gridPos": {
         "h": 7,
-        "w": 9,
+        "w": 10,
         "x": 0,
         "y": 0
       },
       "id": 8,
+      "interval": "20s",
       "legend": {
         "avg": false,
         "current": false,
@@ -43,7 +44,7 @@
       "lines": true,
       "linewidth": 1,
       "links": [],
-      "nullPointMode": "null",
+      "nullPointMode": "connected",
       "percentage": false,
       "pointradius": 2,
       "points": false,
@@ -69,7 +70,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "first_sensor",
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -150,11 +151,12 @@
       "fill": 1,
       "gridPos": {
         "h": 7,
-        "w": 9,
-        "x": 9,
+        "w": 10,
+        "x": 10,
         "y": 0
       },
       "id": 6,
+      "interval": "20s",
       "legend": {
         "avg": false,
         "current": false,
@@ -167,7 +169,7 @@
       "lines": true,
       "linewidth": 1,
       "links": [],
-      "nullPointMode": "null",
+      "nullPointMode": "connected",
       "percentage": false,
       "pointradius": 2,
       "points": false,
@@ -185,15 +187,9 @@
                 "$__interval"
               ],
               "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
             }
           ],
-          "measurement": "first_sensor",
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -278,7 +274,7 @@
       "gridPos": {
         "h": 7,
         "w": 4,
-        "x": 18,
+        "x": 20,
         "y": 0
       },
       "id": 10,
@@ -313,21 +309,8 @@
       "pluginVersion": "6.1.4",
       "targets": [
         {
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "measurement": "first_sensor",
+          "groupBy": [],
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -339,10 +322,6 @@
                   "co2"
                 ],
                 "type": "field"
-              },
-              {
-                "params": [],
-                "type": "last"
               }
             ]
           ],
@@ -360,10 +339,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "Air Quality Project",
+      "description": "",
       "fill": 1,
       "gridPos": {
-        "h": 6,
-        "w": 9,
+        "h": 7,
+        "w": 10,
         "x": 0,
         "y": 7
       },
@@ -395,9 +375,9 @@
       "steppedLine": false,
       "targets": [
         {
-          "alias": "TVOC",
+          "alias": "Relative Humidity",
           "groupBy": [],
-          "measurement": "first_sensor",
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -419,7 +399,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Total Volatile Organic Componets",
+      "title": "Relative Humidity",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -436,7 +416,7 @@
       "yaxes": [
         {
           "format": "short",
-          "label": "tvoc",
+          "label": "Hum [%]",
           "logBase": 1,
           "max": null,
           "min": null,
@@ -464,12 +444,13 @@
       "description": "",
       "fill": 1,
       "gridPos": {
-        "h": 6,
-        "w": 9,
-        "x": 9,
+        "h": 7,
+        "w": 10,
+        "x": 10,
         "y": 7
       },
       "id": 2,
+      "interval": "20s",
       "legend": {
         "avg": false,
         "current": false,
@@ -494,8 +475,21 @@
       "targets": [
         {
           "alias": "Temperature",
-          "groupBy": [],
-          "measurement": "first_sensor",
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "previous"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "query": "SELECT \"temperature\" FROM \"first_sensor\" WHERE $timeFilter",
@@ -509,6 +503,10 @@
                   "temperature"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
               }
             ]
           ],
@@ -559,9 +557,9 @@
     {
       "description": "",
       "gridPos": {
-        "h": 6,
+        "h": 7,
         "w": 4,
-        "x": 18,
+        "x": 20,
         "y": 7
       },
       "id": 12,
@@ -574,13 +572,23 @@
         "showThresholdMarkers": true,
         "thresholds": [
           {
-            "color": "green",
+            "color": "blue",
             "index": 0,
             "value": null
           },
           {
-            "color": "red",
+            "color": "green",
             "index": 1,
+            "value": 20
+          },
+          {
+            "color": "#EAB839",
+            "index": 2,
+            "value": 25
+          },
+          {
+            "color": "red",
+            "index": 3,
             "value": 30
           }
         ],
@@ -597,21 +605,8 @@
       "targets": [
         {
           "alias": "Temperature",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "measurement": "first_sensor",
+          "groupBy": [],
+          "measurement": "third_sensor",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -669,5 +664,5 @@
   "timezone": "",
   "title": "Overview",
   "uid": "joseP3GWz",
-  "version": 14
+  "version": 41
 }
