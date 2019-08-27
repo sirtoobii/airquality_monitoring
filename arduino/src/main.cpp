@@ -221,19 +221,19 @@ void setup(void)
 
   //Setup ble serial
   SerialBLE.begin(9600); // Sometimes the default baud rate is also 115200
-  // writeToBle("AT"); // Wake up
-  // writeToBle("AT+NAMEsensortag1"); //Set name
-  // writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
-  // writeToBle("AT+ADTY3"); // Only advertise, no connect
-  // writeToBle("AT+IBEA1"); // Enable iBeacon mode
-  // //Reset id (we somehow can't set them to 0x0)
-  // writeToBle("AT+IBE000000001");
-  // writeToBle("AT+IBE100000001");
-  // writeToBle("AT+IBE200000001");
-  // writeToBle("AT+IBE300000001");
-  // writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
-  // writeToBle("AT+RESET"); // Restart
-  // delay(1000);
+  writeToBle("AT"); // Wake up
+  writeToBle("AT+NAMEsensortag1"); //Set name
+  writeToBle("AT+ADVIA"); // Set Advertising rate to  2000ms
+  writeToBle("AT+ADTY3"); // Only advertise, no connect
+  writeToBle("AT+IBEA1"); // Enable iBeacon mode
+  //Reset id (we somehow can't set them to 0x0)
+  writeToBle("AT+IBE000000001");
+  writeToBle("AT+IBE100000001");
+  writeToBle("AT+IBE200000001");
+  writeToBle("AT+IBE300000001");
+  writeToBle("AT+PWRM1"); // Disable sleep mode since I found no (working) way to enter operation mode again
+  writeToBle("AT+RESET"); // Restart
+  delay(1000);
   writeToBle("AT");
 
   Serial.println("Module is ready, initializing sensors...");
