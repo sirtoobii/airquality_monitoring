@@ -2,9 +2,17 @@ from bluepy.btle import Scanner, DefaultDelegate
 from checksum import calcChecksum
 from time import sleep
 from data_logger import write_to_db
+from datetime import timedelta, datetime
+
+# define minimal interval between two values
+MIN_AGE = timedelta(minutes=3)
+
+# define CO2 upper level
+MAX_CO2 = 5000
 
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
+        self.last_entry = datetime.now()
         DefaultDelegate.__init__(self)
 
     def handleDiscovery(self, dev, isNewDev, isNewData):
@@ -17,9 +25,9 @@ class ScanDelegate(DefaultDelegate):
     
     def parseUUID(self, uuid_str:str):
         """
-        Index         :        7   11 13   15     19 21   23 25                  39
+        Index         :        7   11 13   15     19 21   23  25                  39
                                |    |  |    |      |  |    |  |                   |
-        Example string: 4c000215 0190 1b   27   03c9 27   a0 a0   0000000 000000 2d       ffe0ffe1 c5
+        Example string: 4c000215 0190 1b   27   03c9 27   a0  a0  0000000 000000 2d       ffe0ffe1 c5
         Labels        : Ibeacon  co2  temp.temp pres.pres hum.hum ------- ------ checksum other_stuff
         """
         co2 = int(uuid_str[8:12], 16)
@@ -38,8 +46,9 @@ class ScanDelegate(DefaultDelegate):
         checksum = True if (r_check_1 == l_check_1 and r_check_2 == l_check_2) else False
         print('Co2: {}, Temp: {}, Presure: {}, hum: {} checksum: {}' \
             .format(co2, temp, pres, hum, checksum))
-        if checksum:
+        if checksum and (datetime.now() - self.last_entry > MIN_AGE) and co2 < MAX_CO2:
             write_to_db(co2, temp, pres, hum)
+            self.last_entry=datetime.now()
         
     
 
