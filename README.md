@@ -11,10 +11,18 @@ The collected data is sent via Bluetooth (HM-10 Module) to an receiver (a Intel-
 
 ![Grafana Dashboard](grafana/dashboard_small.png)
 
+### Project Structure
+| Folder       | Description                                                                                                                  | Remarks                                                                                                                        |
+|--------------|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `Fritzing`   | The Fritzing projcet                                                                                                         | Get fritzing here:[https://fritzing.org/home/](https://fritzing.org)                                                           |
+| `additional` | Datasets for the sensors                                                                                                     |                                                                                                                                |
+| `arduino`    | Ardunio libraries and source code.                                                                                           | This is a platfrom-io project. More info [https://platformio.org/](here)                                                       |
+| `grafana`    | Just the exported `grafana` dashboard                                                                                        |                                                                                                                                |
+| `python`     |  Python files: Write data values to the influx db (`data_logger.py`) and   scan for new advertisement packets (`scanner.py`) |  There is `requirements.txt` file present, which use to   install all required packages: ```pip install -i requirements.txt``` |
 ### Technology Stack
 - Data is stored in a Influx-DB
 - A Grafana-Dashboard is used to display the measured values
-- Scripting language at the receiver-side is Python
+- Scripting language at the receiver-side is Python `3.6`
 - The data is transmitted using iBeacon `UUID-String` (yes this is a hack see more info below)
 
 
