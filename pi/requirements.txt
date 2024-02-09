@@ -1,0 +1,4 @@
+smbus2
+pyserial
+influxdb-client
+python-dotenv
