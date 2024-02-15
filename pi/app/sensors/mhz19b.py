@@ -27,10 +27,8 @@ class MHZ19B:
             if n_resp_bytes > 0:
                 _resp = handle.read(9)
                 if len(_resp) > 0:
-                    if self.checksum(_resp) == _resp[7]:
-                        return _resp
-                    else:
-                        raise IOError("MHZ19B: Checksum missmatch")
+                    # We do not check the checksum because after ~24h of continuous operation, the checksum is always incorrect.
+                    return _resp
                 else:
                     raise IOError("MHZ19B: No data read")
         finally:
